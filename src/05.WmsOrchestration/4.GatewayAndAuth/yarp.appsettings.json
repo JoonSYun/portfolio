@@ -1,0 +1,20 @@
+{
+  "ReverseProxy": {
+    "Routes": {
+      "orders":        { "ClusterId": "order-svc",      "Match": { "Path": "/api/orders/{**rest}" },      "RateLimiterPolicy": "per-tenant" },
+      "inventory":     { "ClusterId": "inventory-svc",  "Match": { "Path": "/api/inventory/{**rest}" },   "RateLimiterPolicy": "per-tenant" },
+      "integration":   { "ClusterId": "integration-svc","Match": { "Path": "/api/integration/{**rest}" }, "RateLimiterPolicy": "per-tenant" },
+      "bulk-submit":   { "ClusterId": "orchestrator",   "Match": { "Path": "/api/sync/bulk", "Methods": [ "POST" ] }, "RateLimiterPolicy": "bulk-submit" },
+      "orchestrator":  { "ClusterId": "orchestrator",   "Match": { "Path": "/api/sync/{**rest}" },        "RateLimiterPolicy": "per-tenant" },
+      "legacy":        { "ClusterId": "legacy-monolith","Match": { "Path": "/api/{**rest}" }, "Order": 100 }
+    },
+    "Clusters": {
+      "order-svc":       { "LoadBalancingPolicy": "RoundRobin", "HealthCheck": { "Active": { "Enabled": true, "Interval": "00:00:10", "Path": "/health" } },
+                           "Destinations": { "a": { "Address": "http://order-svc-1:8080/" }, "b": { "Address": "http://order-svc-2:8080/" } } },
+      "inventory-svc":   { "Destinations": { "a": { "Address": "http://inventory-svc:8080/" } } },
+      "integration-svc": { "Destinations": { "a": { "Address": "http://integration-svc:8080/" } } },
+      "orchestrator":    { "Destinations": { "a": { "Address": "http://orchestrator-1:8080/" }, "b": { "Address": "http://orchestrator-2:8080/" } } },
+      "legacy-monolith": { "Destinations": { "a": { "Address": "http://legacy-api:80/" } } }
+    }
+  }
+}

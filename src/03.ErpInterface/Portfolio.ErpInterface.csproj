@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- [프로젝트 3] 이비즈웨이 ERP 연동 인터페이스 (2026.06 ~ 2026.08, 2명 — 연동 인터페이스 서버·WMS 연동 모듈 담당)
+       기술 스택: C#, ASP.NET(ASMX/SOAP), WinForms, Infragistics, MS SQL Server, ASP.NET Core, React
+       ※ 인터페이스 서버는 레거시 ASMX(.NET Framework) 위에 구축, 더미데이터 관리 페이지는 ASP.NET Core + React -->
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Portfolio.ErpInterface</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Web" />
+    <Reference Include="System.Web.Services" />
+    <PackageReference Include="Dapper" Version="2.1.35" />
+    <PackageReference Include="Infragistics.Win.UltraWinGrid" Version="24.1.*" />
+  </ItemGroup>
+
+</Project>
