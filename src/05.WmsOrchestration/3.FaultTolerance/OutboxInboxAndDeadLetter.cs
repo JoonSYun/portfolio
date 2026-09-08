@@ -1,6 +1,6 @@
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
-using Portfolio.WmsOrchestration.DistributedOrchestration;
+using Portfolio.WmsOrchestration.Saga;
 
 namespace Portfolio.WmsOrchestration.FaultTolerance;
 
@@ -11,13 +11,23 @@ namespace Portfolio.WmsOrchestration.FaultTolerance;
 ///          트랜잭션이 커밋되면 별도 배달자가 브로커로 보낸다. "DB 는 바뀌었는데 메시지는 안 나감" 이 불가능.
 /// Inbox  : 수신한 MessageId 를 같은 트랜잭션에 기록한다. 브로커가 재전달해도 두 번 반영되지 않는다.
 ///          (Redis 이중 멱등성은 빠른 1차 방어, Inbox 는 트랜잭션 수준의 최종 방어)
-/// MassTransit 의 EF Core Outbox 를 쓴다 — Saga 상태 + Outbox + Inbox 가 한 DbContext(PostgreSQL) 에 있다.
+/// MassTransit 의 EF Core Outbox 를 쓴다 — Saga 상태(Job/JobProcess/ChunkStep/Compensation 4종) + Outbox + Inbox 가
+/// 한 DbContext 에 있다. 각 Saga 의 EF 매핑은 <c>1.DistributedOrchestration/Saga/State/*StateMap.cs</c> 참조.
 /// </summary>
 public sealed class OrchestrationDbContext : SagaDbContext
 {
     public OrchestrationDbContext(DbContextOptions<OrchestrationDbContext> o) : base(o) { }
 
-    protected override IEnumerable<ISagaClassMap> Configurations { get { yield return new BulkSyncStateMap(); } }
+    protected override IEnumerable<ISagaClassMap> Configurations
+    {
+        get
+        {
+            yield return new JobSagaStateMap();
+            yield return new JobProcessSagaStateMap();
+            yield return new ChunkStepSagaStateMap();
+            yield return new ChunkStepCompensationSagaStateMap();
+        }
+    }
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -25,19 +35,6 @@ public sealed class OrchestrationDbContext : SagaDbContext
         b.AddInboxStateEntity();          // inbox_state
         b.AddOutboxMessageEntity();       // outbox_message
         b.AddOutboxStateEntity();         // outbox_state
-    }
-}
-
-public sealed class BulkSyncStateMap : SagaClassMap<BulkSyncState>
-{
-    protected override void Configure(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<BulkSyncState> e, ModelBuilder m)
-    {
-        e.ToTable("bulk_sync_saga");
-        e.Property(x => x.CurrentState).HasMaxLength(32);
-        e.Property(x => x.TenantId).HasMaxLength(32);
-        e.Property(x => x.RowVersion).IsRowVersion();
-        e.Property(x => x.CompletedChunkIds).HasColumnType("jsonb");
-        e.HasIndex(x => new { x.TenantId, x.SubmittedAt });
     }
 }
 

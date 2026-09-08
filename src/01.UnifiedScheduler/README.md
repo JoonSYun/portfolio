@@ -27,11 +27,18 @@
 
 | 파일 | 내용 |
 |---|---|
-| [`PipelineStages.cs`](2.ExecutionPipeline/PipelineStages.cs) | 8계층 정의: 등록·동기화·발사·필터·적재·실행·마감·알림 |
-| [`SchedulePipeline.cs`](2.ExecutionPipeline/SchedulePipeline.cs) | 1~5단계. **브랜드 fan-out 을 발사 단계에** 배치 (등록 비용 = 도메인 수) |
-| [`JobBase.cs`](2.ExecutionPipeline/JobBase.cs) | 공통 Job 베이스: 로그 부착 → 검증 → 상태 전이 → 타임아웃 전파 → 실패 마감 → 알림 |
-| [`JobExecutionState.cs`](2.ExecutionPipeline/JobExecutionState.cs) | 상태 전이 규칙 강제 |
-| [`Jobs/ReturnPickupInstructionJob.cs`](2.ExecutionPipeline/Jobs/ReturnPickupInstructionJob.cs) | 파생 Job 예시 — 검증 하나, 비즈니스 로직 하나 |
+| [`Core/JobBase.cs`](2.ExecutionPipeline/Core/JobBase.cs) | **공통 Job 베이스 (원문)**. 단일 try/catch 로 페이로드 역직렬화 → DataAnnotations 검증 → ENQUEUED→RUNNING → shutdown+timeout linked token → 비즈니스 → SUCCESS/FAILED → 알림. 마감·알림 단계만 예외를 swallow 하고 원본 예외는 `ExceptionDispatchInfo` 로 stack 보존 rethrow |
+| [`Core/Dispatcher.cs`](2.ExecutionPipeline/Core/Dispatcher.cs) | 발사·필터·적재. 도메인 cron tick 1회 → 활성 브랜드 fan-out → 브랜드 시간대 cron(OR) narrowing → 활성 잡 중복 검사(1회 SELECT) → Hangfire enqueue. cron/수동 3개 진입점이 같은 경로를 공유 |
+| [`Core/ScheduleSyncJob.cs`](2.ExecutionPipeline/Core/ScheduleSyncJob.cs) | 등록·동기화. DB 스케줄(원본) → Hangfire RecurringJob(파생) 매분 복제 — UPD_DT 체크포인트 + 등록셋↔활성셋 양방향 reconcile |
+| [`Core/DeprecationSweeper.cs`](2.ExecutionPipeline/Core/DeprecationSweeper.cs) · [`Infrastructure/Hangfire/`](2.ExecutionPipeline/Infrastructure/Hangfire/) | 마감 보조. 큐 대기 한도(DEPRECATE_SEC)·실행 한도(TIMEOUT_SEC) 초과 잡을 필터(실행 직전)와 스위퍼(매분 SQL 스캔) 두 지점에서 폐기 |
+| [`Core/NotificationJob.cs`](2.ExecutionPipeline/Core/NotificationJob.cs) | 알림. 시스템/브랜드 수신자 그룹을 게이트·본문·발송 모두 독립 처리, timeout 합성 |
+| [`Infrastructure/JobLogRepository.cs`](2.ExecutionPipeline/Infrastructure/JobLogRepository.cs) | 상태 전이 저장소. 모든 전이가 from-status 가드 + 행수 반환으로 멱등, `MarkRunningOutcome` 으로 정상 race(DEPRECATED)와 정합성 깨짐을 구분 |
+| [`Core/DomainJobRegistry.cs`](2.ExecutionPipeline/Core/DomainJobRegistry.cs) · [`Core/IDomainJob.cs`](2.ExecutionPipeline/Core/IDomainJob.cs) | DB 의 JOB_TYPE(short name) → Type 매핑. 중복 이름은 기동 시 fail-loud |
+| [`Jobs/DBReindexJob.cs`](2.ExecutionPipeline/Jobs/DBReindexJob.cs) · [`Jobs/MailTestJob.cs`](2.ExecutionPipeline/Jobs/MailTestJob.cs) | 파생 Job 예시 — `ExecuteCoreAsync` 하나 / 운영·테스트 경로와 시스템·업무 예외 라우팅 |
+| [`Models/`](2.ExecutionPipeline/Models/) · [`Infrastructure/`](2.ExecutionPipeline/Infrastructure/) | 위 파일들이 참조하는 페이로드(`JobArgs`)·상태(`JobStatus`)·예외·옵션·로깅 확장·Polly SQL 재시도 파이프라인 |
+
+> 이 폴더의 코드는 **실제 운영 중인 원문**입니다 (회사·브랜드·DB 카탈로그 이름만 일반화). 8계층 파이프라인은 위 파일에 이렇게 대응합니다 —
+> 등록·동기화 `ScheduleSyncJob` / 발사·필터·적재 `Dispatcher` + Hangfire 필터 / 실행·마감 `JobBase` + `JobLogRepository` / 알림 `NotificationJob`.
 
 ### 3) 장애 격리와 운영 자율화 → [`3.FaultIsolationAndOperations/`](3.FaultIsolationAndOperations/)
 > 큐·워커·알림을 서버 단위로 분리해 한 작업의 실패가 다른 브랜드나 플랫폼 전체로 전이되지 않도록 차단. 도메인·그룹·브랜드·큐 어느 수준에서든 즉시 차단·검증·일시정지가 가능한 3단 운영 제어로 개발자 개입 없는 운영자 직접 대응 환경 확보
@@ -39,7 +46,7 @@
 | 파일 | 내용 |
 |---|---|
 | [`WorkerTopology.cs`](3.FaultIsolationAndOperations/WorkerTopology.cs) | 큐 = 워커 서버 단위 분리, 알림 전용 노드 |
-| [`NotificationWorker.cs`](3.FaultIsolationAndOperations/NotificationWorker.cs) | 알림을 실행 워커와 프로세스 수준에서 격리 |
+| [`HangfireNotifier.cs`](2.ExecutionPipeline/Infrastructure/Notifiers/HangfireNotifier.cs) · [`NotificationJob.cs`](2.ExecutionPipeline/Core/NotificationJob.cs) (2.ExecutionPipeline 원문) | 알림을 실행 워커와 프로세스 수준에서 격리 — 실행 워커는 알림 큐에 enqueue 만 하고 즉시 리턴, 발송은 알림 전용 노드의 `NotificationJob` |
 | [`OperationalControl/OperationalGate.cs`](3.FaultIsolationAndOperations/OperationalControl/OperationalGate.cs) | 3단 제어: 전역 일시정지 / 도메인·그룹·브랜드·큐 차단 / 검증 모드 + 감사 로그 |
 | [`OperationalControl/OperationalControlController.cs`](3.FaultIsolationAndOperations/OperationalControl/OperationalControlController.cs) | 운영자용 제어 API (JWT Operator 역할) |
 

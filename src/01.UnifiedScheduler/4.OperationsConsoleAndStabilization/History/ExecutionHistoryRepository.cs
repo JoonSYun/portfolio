@@ -1,15 +1,6 @@
 using System.Data;
 using Dapper;
-using Portfolio.UnifiedScheduler.ConfigurationInheritance;
-using Portfolio.UnifiedScheduler.ExecutionPipeline;
-
 namespace Portfolio.UnifiedScheduler.OperationsConsoleAndStabilization.History;
-
-public interface IExecutionHistoryWriter
-{
-    Task StartedAsync(Guid executionId, EffectiveSchedule schedule, DateTimeOffset firedAt);
-    Task FinishedAsync(JobOutcome outcome);
-}
 
 public interface IExecutionHistoryReader
 {
@@ -21,38 +12,19 @@ public sealed record ExecutionHistoryRow(Guid ExecutionId, string DomainCode, st
     DateTime FiredAt, DateTime? FinishedAt, int ElapsedMs, int ProcessedCount, string? Message);
 
 /// <summary>
-/// [담당업무 4] 실행 이력 저장/조회.
+/// [담당업무 4] 실행 이력 조회 (관리 콘솔용).
+/// 이력의 상태 전이(ENQUEUED→RUNNING→SUCCESS/FAILED/DEPRECATED) 자체는
+/// <c>2.ExecutionPipeline/Infrastructure/JobLogRepository.cs</c> 가 담당한다 — 이 클래스는 읽기 전용이다.
 ///
 /// ⚠ 인시던트: 조회 데드락 (Incidents/QueryDeadlock_ParameterTypeMismatch.md)
 ///   VARCHAR 컬럼을 NVARCHAR 파라미터로 조회하면 암시적 변환 때문에 인덱스를 타지 못하고
 ///   테이블 스캔 → 쓰기 워커와 락 경합 → 데드락. Dapper 는 string 을 기본 NVARCHAR 로 보낸다.
 ///   해결: DbString(IsAnsi=true) 로 컬럼 타입과 정확히 일치시켜 인덱스 seek 을 회복.
 /// </summary>
-public sealed class ExecutionHistoryRepository : IExecutionHistoryWriter, IExecutionHistoryReader
+public sealed class ExecutionHistoryRepository : IExecutionHistoryReader
 {
     private readonly IDbConnection _db;
     public ExecutionHistoryRepository(IDbConnection db) => _db = db;
-
-    public Task StartedAsync(Guid id, EffectiveSchedule s, DateTimeOffset firedAt) => _db.ExecuteAsync("""
-        INSERT sch.ExecutionHistory (ExecutionId, DomainCode, BrandCode, QueueName, State, FiredAt, StartedAt)
-        VALUES (@Id, @Domain, @Brand, @Queue, 'Running', @FiredAt, SYSUTCDATETIME());
-        """, new
-        {
-            Id = id,
-            Domain = Ansi(s.DomainCode), Brand = Ansi(s.BrandCode), Queue = Ansi(s.QueueName),
-            FiredAt = firedAt.UtcDateTime
-        });
-
-    public Task FinishedAsync(JobOutcome o) => _db.ExecuteAsync("""
-        UPDATE sch.ExecutionHistory
-        SET    State = @State, FinishedAt = SYSUTCDATETIME(), ElapsedMs = @ElapsedMs,
-               ProcessedCount = @Processed, Message = @Message
-        WHERE  ExecutionId = @Id;
-        """, new
-        {
-            Id = o.ExecutionId, State = Ansi(o.State.ToString()), ElapsedMs = (int)o.Elapsed.TotalMilliseconds,
-            Processed = o.ProcessedCount, Message = o.Message
-        });
 
     public async Task<IReadOnlyList<ExecutionHistoryRow>> SearchAsync(HistoryQuery q, CancellationToken ct)
     {

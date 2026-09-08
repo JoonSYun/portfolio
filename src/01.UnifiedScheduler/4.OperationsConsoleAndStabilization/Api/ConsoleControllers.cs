@@ -5,7 +5,8 @@ using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Portfolio.UnifiedScheduler.ConfigurationInheritance;
-using Portfolio.UnifiedScheduler.ExecutionPipeline;
+using Portfolio.UnifiedScheduler.Jobs;
+using Portfolio.UnifiedScheduler.Models;
 using Portfolio.UnifiedScheduler.OperationsConsoleAndStabilization.History;
 
 namespace Portfolio.UnifiedScheduler.OperationsConsoleAndStabilization.Api;
@@ -17,12 +18,12 @@ public sealed class ConsoleController : ControllerBase
     private readonly IExecutionHistoryReader _history;
     private readonly IScheduleConfigRepository _config;
     private readonly ScheduleConfigResolver _resolver;
-    private readonly IBackgroundJobClient _jobs;
+    private readonly Dispatcher _dispatcher;
     private readonly IDbConnection _db;
 
     public ConsoleController(IExecutionHistoryReader history, IScheduleConfigRepository config,
-        ScheduleConfigResolver resolver, IBackgroundJobClient jobs, IDbConnection db)
-    { _history = history; _config = config; _resolver = resolver; _jobs = jobs; _db = db; }
+        ScheduleConfigResolver resolver, Dispatcher dispatcher, IDbConnection db)
+    { _history = history; _config = config; _resolver = resolver; _dispatcher = dispatcher; _db = db; }
 
     /// <summary>실행 이력 — 도메인/브랜드/기간 필터. 콘솔 메인 화면.</summary>
     [HttpGet("history")]
@@ -45,19 +46,27 @@ public sealed class ConsoleController : ControllerBase
         return result;
     }
 
-    /// <summary>수동 실행 — 특정 브랜드 또는 도메인 전체. 스케줄과 동일한 파이프라인을 탄다.</summary>
+    /// <summary>
+    /// 수동 실행 — 특정 브랜드 또는 도메인 전체. cron 자동 발사와 같은 <see cref="Dispatcher"/> enqueue 경로를 탄다.
+    /// <c>runAs=test</c> 면 비즈니스 로직을 우회하는 테스트 실행(JobArgs.IsTest) 으로 흘린다.
+    /// </summary>
     [HttpPost("run/{domainCode}")]
     [Authorize(Roles = "Operator")]
-    public async Task<IActionResult> Run(string domainCode, [FromQuery] string? brandCode, CancellationToken ct)
+    public IActionResult Run(string domainCode, [FromQuery] string? brandCode, [FromQuery] RunAsMode runAs = RunAsMode.Operational)
     {
-        var targets = brandCode is null
-            ? await _resolver.ResolveAllBrandsAsync(domainCode, ct)
-            : new[] { await _resolver.ResolveAsync(domainCode, brandCode, ct) };
+        var requester = User.Identity?.Name ?? "console";
 
-        foreach (var s in targets)
-            _jobs.Enqueue(s.QueueName, () => JobDispatcher.ExecuteAsync(new JobRequest(s, DateTimeOffset.UtcNow, false), CancellationToken.None));
+        var results = brandCode is null
+            ? _dispatcher.EnqueueDomain(domainCode, runAs, requester)
+            : new[] { _dispatcher.EnqueueOne(domainCode, brandCode, runAs, requester) };
 
-        return Accepted(new { domainCode, enqueued = targets.Count, operatorId = User.Identity?.Name });
+        return Accepted(new
+        {
+            domainCode,
+            enqueued = results.Count(r => r.SkipReason is null),
+            skipped  = results.Where(r => r.SkipReason is not null).Select(r => new { r.BrandCode, r.SkipReason, r.ActiveLogId }),
+            operatorId = requester
+        });
     }
 
     /// <summary>DB 헬스 — 연결·대기 세션·블로킹·Hangfire 큐 적체를 한 번에.</summary>
