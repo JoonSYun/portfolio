@@ -16,11 +16,11 @@ public class MailOptions
     /// <summary>STARTTLS 사용 여부.</summary>
     public bool EnableSsl { get; set; } = true;
 
-    /// <summary>발신자 주소. 예: master@slogis.co.kr.</summary>
+    /// <summary>발신자 주소. 예: noreply@example.com.</summary>
     public string FromAddress { get; set; } = "";
 
     /// <summary>발신자 표시 이름(선택).</summary>
-    public string FromDisplayName { get; set; } = "WS.CORE Scheduler";
+    public string FromDisplayName { get; set; } = "Portfolio Scheduler";
 
     /// <summary>SMTP 인증 사용자명. 보통 <see cref="FromAddress"/> 와 동일.</summary>
     public string Username { get; set; } = "";
