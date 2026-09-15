@@ -42,14 +42,31 @@ C#, ASP.NET Core, MS SQL Server 환경에서 파편화된 서비스의 플랫폼
 | 3) 분산 환경의 장애 내성 — 이중 멱등성, Polly, Redis 분산 락, Outbox/Inbox, DLQ | [`3.FaultTolerance/`](src/02.WmsOrchestration/3.FaultTolerance/) |
 | 4) 게이트웨이 및 인증 인프라 — YARP, 요청량 제한, SignalR, 이원화 DB, JWT·다중 테넌트 | [`4.GatewayAndAuth/`](src/02.WmsOrchestration/4.GatewayAndAuth/) |
 
+## 개인 프로젝트
+
+| # | 프로젝트 | 기간 | 규모 | 기술 스택 |
+|---|---|---|---|---|
+| 3 | [**Washpe — 세차 날씨·커뮤니티 앱**](src/03.Washpe/) | 2026.02 ~ 2026.04 | 1명 (기획·설계·백엔드·앱·배포 단독) | Supabase (PostgreSQL, Edge Functions/TypeScript, RLS), Cloudflare R2·Pages, Cloud Run, Flutter, Google Play·App Store 결제 |
+
+### 3. Washpe → [`src/03.Washpe/`](src/03.Washpe/)
+날씨 기반 세차 적합도(DWI) 계산, 약품 재고를 반영한 맞춤 조언, 커뮤니티, 구독 결제를 갖춘 앱. 백엔드 전체(Edge Function 14종, 마이그레이션 30개)를 1인으로 설계·운영.
+**앱 시작 시 Edge Function 호출 10-12회 → 4-5회, JWT 검증 4-5회 → 1회.**
+
+| 담당업무 | 폴더 |
+|---|---|
+| 1) Edge Function 공통 플랫폼 — Action 라우터, 인증·CORS·요청/감사 로그 표준화, 시작 API 집계 | [`1.EdgeFunctionPlatform/`](src/03.Washpe/1.EdgeFunctionPlatform/) |
+| 2) 날씨 스코어링과 DB 기반 규칙 엔진 — 격자 단위 공유 캐시, 하드코딩 분기 27개 → 규칙 테이블 | [`2.WeatherScoringAndRuleEngine/`](src/03.Washpe/2.WeatherScoringAndRuleEngine/) |
+| 3) 오프라인 우선 동기화 — Transactional Outbox, 멱등 키, Fatal/Transient 재시도, orphan 복구 | [`3.OfflineFirstSync/`](src/03.Washpe/3.OfflineFirstSync/) |
+| 4) 구독 결제 서버 검증 — 영수증 재검증, RTDN(OIDC)·SNv2(JWS 체인) 웹훅, DB 멱등 | [`4.SubscriptionVerification/`](src/03.Washpe/4.SubscriptionVerification/) |
+
 ---
 
 ## 관통하는 설계 원칙
 
 프로젝트마다 형태는 다르지만 같은 원칙이 반복됩니다.
 
-- **변하는 것은 설정으로, 변하지 않는 것은 상위 계층으로.** 스케줄러의 2계층 상속(1-1), 오케스트레이션의 Base Framework(2-2) — 같은 결정입니다. 결과는 "신규 브랜드·도메인 추가 = 배포 없이 등록".
-- **실패를 격리하고, 되돌릴 수 있게.** 큐·워커 서버 분리(1-3), Step 단위 격리와 Saga 보상(2-1), 이중 멱등성·분산 락·DLQ 재처리(2-3).
+- **변하는 것은 설정으로, 변하지 않는 것은 상위 계층으로.** 스케줄러의 2계층 상속(1-1), 오케스트레이션의 Base Framework(2-2), 조언 규칙의 테이블화(3-2) — 같은 결정입니다. 결과는 "신규 브랜드·도메인 추가 = 배포 없이 등록".
+- **실패를 격리하고, 되돌릴 수 있게.** 큐·워커 서버 분리(1-3), Step 단위 격리와 Saga 보상(2-1), 이중 멱등성·분산 락·DLQ 재처리(2-3), Outbox 멱등 재전송·결제 웹훅 멱등(3-3, 3-4).
 - **운영자가 개발자 없이 대응할 수 있게.** 3단 운영 제어(1-3), 관리 콘솔(1-4), 실시간 상태 허브(2-4).
 - **원인까지 파고든다.** 조회 데드락의 파라미터 타입 불일치(1-4), .NET Framework 압축 포맷 브리지(1-4).
 
@@ -60,6 +77,7 @@ Portfolio.sln
 src/
   01.UnifiedScheduler/        1.ConfigurationInheritance  2.ExecutionPipeline  3.FaultIsolationAndOperations  4.OperationsConsoleAndStabilization
   02.WmsOrchestration/        1.DistributedOrchestration  2.BaseFramework      3.FaultTolerance               4.GatewayAndAuth
+  03.Washpe/                  1.EdgeFunctionPlatform      2.WeatherScoringAndRuleEngine  3.OfflineFirstSync     4.SubscriptionVerification
 ```
 
 ## 라이선스
