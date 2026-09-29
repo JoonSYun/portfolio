@@ -34,7 +34,6 @@
 7. [Base Framework — Consumer 공통 베이스](#7-base-framework--consumer-공통-베이스)
 8. [Attribute 바인딩 엔진](#8-attribute-바인딩-엔진)
 9. [장애 내성 — 층별 방어](#9-장애-내성--층별-방어)
-10. [알려진 한계와 다음 과제](#10-알려진-한계와-다음-과제)
 
 ---
 
@@ -451,7 +450,7 @@ private async Task HandleProcessAsync(ConsumeContext<TEvent> context)
     }
     catch (Exception ex)
     {
-        // (생략) 같은 방식으로 FAIL 결과 이벤트 발행 — 10장 참고
+        // (생략) 같은 방식으로 FAIL 결과 이벤트 발행
     }
 }
 ```
@@ -623,18 +622,6 @@ return {}
 | 충돌 시 **충돌한 식별자 목록**을 반환 | 호출자에게 "어느 전표가 처리 중인지" 를 그대로 알려 줄 수 있다 |
 | Job 별 역색인 (`lock:job:{jobId}`) | Job 이 끝나면 자기가 잡은 락만 한 번에 해제한다 |
 | 시각 ZSET | TTL 과 별개로 오래된 락을 골라 정리할 수 있다 |
-
----
-
-## 10. 알려진 한계와 다음 과제
-
-| 항목 | 현재 상태 | 계획 |
-|---|---|---|
-| Step 의 예기치 못한 예외 | 베이스가 BUSINESS_FAIL 결과 이벤트로 바꿔 발행하고 다시 던지지 않는다 (재시도 코드는 주석 상태). Saga 는 멈추지 않지만, 일시 장애도 재시도 없이 업무 실패로 처리된다 | 일시 장애 예외 유형을 분류해 재시도 후 발행 |
-| 단일 키 락 해제 | [`RedisLockManager.ReleaseLockAsync`](2.BaseFramework/Infrastructure/Redis/RedisLockManager.cs) 가 소유자 확인 없이 키를 지운다. TTL 이 먼저 만료되고 다른 인스턴스가 잡은 락을 지울 수 있다 | 획득 값(시각·머신명)을 비교하는 Lua 해제로 교체 |
-| 청크 완료 카운터 키 유실 | DB 로 판정하지만, 그 뒤 카운터를 복구하지 않아 이후 청크도 매번 DB 판정 (코드에 TODO) | 키 유실 시 DB 값으로 카운터 재구성 |
-| 도메인별 보상 구현 | 보상 프레임워크는 완성됐지만 일부 도메인은 `CompensateAsync` 가 no-op 이라, 해당 도메인의 보상 Saga 는 즉시 완료된다 | 외부 시스템에 취소 API 가 있는 도메인부터 순차 구현 |
-| 프로시저 도메인의 부분 성공 | 2단 베이스는 프로시저 실패를 전체 실패로만 본다 | 결과 테이블의 행 단위 오류를 PARTIAL_SUCCESS 로 변환 |
 
 ---
 
