@@ -9,6 +9,8 @@
 **개요** — 모놀리식 API 시스템을 MSA로 전환. WMS와 다수의 외부 쇼핑몰·물류 시스템 간 대량 데이터 연동을 위한 메시지 기반 오케스트레이션 플랫폼 구축.
 타임아웃·네트워크 장애·DB 락이 겹치는 상황에서도 서버 응답 장애 0건 달성.
 
+> **설계 문서** — Job·Chunk·Step 3계층, Saga 4종의 상태 전이와 보상 흐름, Consumer 베이스와 Attribute 바인딩 엔진, 층별 장애 내성 장치의 설계 이유는 [`ARCHITECTURE.md`](ARCHITECTURE.md) 에 정리했습니다.
+
 ## 담당업무 ↔ 코드
 
 ### 1) 분산 오케스트레이션 설계 → [`1.DistributedOrchestration/`](1.DistributedOrchestration/)

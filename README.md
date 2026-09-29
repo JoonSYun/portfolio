@@ -35,6 +35,7 @@ C#, ASP.NET Core, MS SQL Server 환경에서 파편화된 서비스의 플랫폼
 ### 2. WMS 오케스트레이션 플랫폼 (MSA 전환) → [`src/02.WmsOrchestration/`](src/02.WmsOrchestration/)
 모놀리식 API를 MSA로 전환. WMS와 다수의 외부 쇼핑몰·물류 시스템 간 대량 데이터 연동을 위한 메시지 기반 오케스트레이션 플랫폼 구축.
 **타임아웃·네트워크 장애·DB 락이 겹치는 상황에서도 서버 응답 장애 0건.**
+설계 결정과 이유는 [설계 문서](src/02.WmsOrchestration/ARCHITECTURE.md) 참고.
 
 | 담당업무 | 폴더 |
 |---|---|
