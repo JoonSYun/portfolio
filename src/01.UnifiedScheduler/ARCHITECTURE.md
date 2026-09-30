@@ -19,8 +19,6 @@
 7. [중복 실행 방지 — 4겹 체크](#7-중복-실행-방지--4겹-체크)
 8. [실행 시간 한도 — 협조적 취소](#8-실행-시간-한도--협조적-취소)
 9. [전역 일시정지 — cron 발사 차단](#9-전역-일시정지--cron-발사-차단)
-10. [운영 사고에서 바뀐 설계](#10-운영-사고에서-바뀐-설계)
-11. [알려진 한계와 다음 과제](#11-알려진-한계와-다음-과제)
 
 ---
 
@@ -392,7 +390,7 @@ private static bool IsAnyFireTime(IReadOnlyList<string> cronExprs, DateTime buck
 |---|---|
 | 라이프사이클을 베이스 한 곳에 | Job 69종이 각자 구현하면 누락과 불일치가 생긴다 |
 | 재시도 0, 상태는 `SCH_JOB_LOG` 로 직접 | 두 메커니즘이 같이 돌면 상태가 어긋난다. 다시 돌리는 건 다음 tick 이나 수동 실행 |
-| 모든 전이에 from-status 가드 | 경합 시 닫힌 행이 되살아나거나 성공이 실패로 뒤집히는 사고를 막는다 (10장) |
+| 모든 전이에 from-status 가드 | 경합 시 닫힌 행이 되살아나거나 성공이 실패로 뒤집히는 사고를 막는다 |
 | 부수효과(마킹, 메일, 훅) 예외는 삼킴 | SMTP 다운 같은 부수 실패가 원본 예외를 가리거나 성공을 실패로 뒤집지 않게 |
 | 역직렬화·검증을 RUNNING 전환 전에 | 잘못된 설정은 업무 코드 진입 전에 FAILED 로 끊고, 재현용 입력을 로그에 남긴다 |
 
@@ -469,7 +467,7 @@ flowchart TD
 | [`TryMarkSuccess`](2.ExecutionPipeline/Infrastructure/JobLogRepository.cs#L170) | RUNNING | SUCCESS | false → 경고 로그 |
 | [`TryMarkFailed`](2.ExecutionPipeline/Infrastructure/JobLogRepository.cs#L211) | ENQUEUED, RUNNING | FAILED | false → 경고 로그 |
 | `MarkManyDeprecated` | 지정한 from | DEPRECATED | 건수 차이로 race 확인 |
-| [`MarkDeprecated`](2.ExecutionPipeline/Infrastructure/JobLogRepository.cs#L227) | 가드 없음 | DEPRECATED | — (11장 참고) |
+| [`MarkDeprecated`](2.ExecutionPipeline/Infrastructure/JobLogRepository.cs#L227) | 가드 없음 | DEPRECATED | — |
 
 ---
 
@@ -560,7 +558,7 @@ sequenceDiagram
 | 선택 | 이유 |
 |---|---|
 | 중복 단위는 (도메인, 브랜드) | 같은 브랜드의 같은 연동이 겹치면 중복 수신·송신이 된다. 다른 브랜드끼리는 병렬 허용 |
-| 활성잡은 도메인당 1번만 조회 + 필터드 인덱스 | 분 경계에 여러 도메인이 동시에 발사될 때의 조회 부하와 데드락을 줄인다 (10장) |
+| 활성잡은 도메인당 1번만 조회 + 필터드 인덱스 | 분 경계에 여러 도메인이 동시에 발사될 때의 조회 부하와 데드락을 줄인다 |
 | ENQUEUED 행은 Dispatcher 가 아니라 **Hangfire 필터**가 만듦 | cron, 수동 실행, 도메인 수동 실행 세 진입점이 모두 같은 `Create` 를 지난다. "큐에 있는 잡은 반드시 로그 행을 가진다" 를 한 곳에서 보장 |
 | WMS 는 같은 `SCH_JOB_LOG` 를 프로시저로 점유 | WMS 는 Hangfire 밖의 별도 솔루션이다. 스케줄러가 이미 보는 활성잡 행을 공유하는 것이 연동 범위가 가장 작다 |
 
@@ -798,33 +796,6 @@ sequenceDiagram
 - Fire 가 정상 반환하므로 Hangfire 는 그 회차를 성공으로 본다. **일시정지 동안 건너뛴 회차는 해제 후 몰아서 실행되지 않는다** — 의도한 동작이다.
 
 이 스위치는 3단 운영 제어(전역 일시정지 / 도메인·그룹·브랜드·큐 차단 / 검증 모드) 중 1단이다. 전체 모델은 [`3.FaultIsolationAndOperations/OperationalControl/`](3.FaultIsolationAndOperations/OperationalControl/) 참고.
-
----
-
-## 10. 운영 사고에서 바뀐 설계
-
-지금의 구조 중 상당 부분은 처음부터 그렇게 설계한 것이 아니라, 운영 중 드러난 문제를 원인까지 추적해 바꾼 결과다.
-
-| 증상 | 원인 | 바꾼 설계 |
-|---|---|---|
-| 분 경계에 활성잡 조회에서 데드락 | 브랜드마다 `SCH_JOB_LOG` 를 조회해, 여러 도메인이 동시에 발사될 때 핫테이블 조회가 폭증 | 도메인당 1회 조회 + 필터드 인덱스 `(DOMAIN_CODE, BRAND_CODE, ENQUEUED_DT DESC) WHERE STATUS IN ('ENQUEUED','RUNNING')`. 판정에 필요한 설정은 `JobArgs` 스냅샷으로 옮겨 JOIN 제거 |
-| 스위퍼가 닫은 행이 RUNNING 으로 되살아남, 성공 직후 DB 순간 오류로 SUCCESS 가 FAILED 로 뒤집힘 | 상태 전이가 현재 상태를 확인하지 않고 덮어씀 | 모든 전이에 from-status 가드 + 영향 행 수 반환, 부수효과 예외 격리 (5.1절) |
-| 도메인 그룹을 껐다 켜면 RecurringJob 이 영영 재등록되지 않음 | 변경 체크포인트가 스케줄 테이블에만 있어 그룹 토글을 감지 못함 | 매분 동기화에 등록셋 ↔ 활성셋 양방향 reconcile 추가 (4.1절) |
-| 실행 한도가 긴 카테고리의 늦은 잡이 33분간 폐기되지 않음 | 하나의 `TIMEOUT_SEC` 이 실행 한도와 대기 한도를 겸함 | `DEPRECATE_SEC` 분리, 기본값 0 fail-open (6장, 8.1절) |
-| 기동 시 Hangfire 스키마 설치와 필터 등록이 반복됨 | 필터 생성자가 `INotifier` 를 주입받으며 Hangfire 설정 팩토리가 재진입 | `IServiceProvider` 에서 지연 해석하도록 변경 — 생성자 주입으로 되돌리지 않도록 코드에 명시 |
-| WORKER_COUNT=1 큐에서 발사 자체가 밀림 | `Dispatcher.Fire` 가 업무 잡과 같은 카테고리 큐에서 돎 | 발사 전용 `recurring` 큐 분리 (3장) |
-| 네임스페이스 정리 후 발사 실패 | JOB_TYPE 에 전체 이름 저장 | 짧은 이름 + 어셈블리 스캔 레지스트리 (2.1절) |
-
----
-
-## 11. 알려진 한계와 다음 과제
-
-| 항목 | 현재 상태 | 계획 |
-|---|---|---|
-| 협조적 취소 미적용 지점 | 레거시에서 옮겨 온 일부 헬퍼(반품 수신 공통 헬퍼, 회수 헬퍼, 토큰 갱신 잡)가 동기 DB 호출이거나 토큰을 넘기지 않는다. `CommandTimeout`(120초 등)으로만 제한되고, 넘기면 Sweeper 가 상태만 닫는다 | `ISchedulerConnection` 비동기 + 토큰 전달로 순차 전환 |
-| `MarkDeprecated` 가드 없음 | DeprecationFilter 경로는 from-status 가드 없이 DEPRECATED 로 쓴다 | `from ENQUEUED` 가드 추가 |
-| 재배포 중 실행 중이던 잡 | 종료 토큰으로 FAILED 마감 후, Hangfire 가 잡을 큐로 되돌려 재기동 뒤 다시 집히면 실행 진입 가드에서 한 번 더 FAILED 알림이 나갈 수 있다 | Hangfire 1.8 재현 테스트 후, 종료 취소는 FAILED 대신 별도 처리 |
-| 큐 구성 변경 | 큐 추가·워커 수 변경은 재기동 필요 | 운영 빈도가 낮아 현재는 수용 |
 
 ---
 
