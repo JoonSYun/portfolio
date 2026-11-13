@@ -1,0 +1,30 @@
+# Build results
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.user
+*.suo
+.vs/
+
+# .NET
+project.lock.json
+artifacts/
+*.nupkg
+
+# Rider / VS Code
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / local
+*.log
+seq-data/
+pgdata/
+appsettings.*.local.json

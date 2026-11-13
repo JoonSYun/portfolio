@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- [프로젝트 2] WMS 오류 진단 에이전트 (2026.10 ~ 운영 중, 단독 설계·개발)
+       기술 스택: .NET 8, ASP.NET Core, Claude API(C# SDK), Model Context Protocol, ScriptDom,
+                 Dapper, MS SQL Server, Serilog + Seq, React -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Portfolio.DiagnosisAgent</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Anthropic" Version="12.55.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
+    <PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="180.59.2" />
+    <PackageReference Include="Dapper" Version="2.1.35" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.8" />
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.2" />
+  </ItemGroup>
+
+</Project>
